@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>IMSCC Quiz Parser</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            /* Optional custom styles for better readability */
+            .question-item {
+                border-left: 4px solid #3b82f6; /* Blue border */
+            }
+            .correct-answer-text {
+                color: #10b981; /* Green color for correct answer */
+            }
+            .correct-answer-id {
+                font-size: 0.8em;
+                color: #6b7280; /* Gray color for ID */
+            }
+        </style>
+    </head>
+    <body class="bg-gray-100 font-sans p-6">
+        <div
+            class="container mx-auto bg-white rounded-xl shadow-lg p-8 max-w-4xl"
+        >
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                IMSCC Quiz Parser
+            </h1>
+
+            <p class="text-center text-gray-600 mb-8">
+                Upload your `.imscc` file to parse all quizzes into a structured
+                JSON format.
+            </p>
+
+            <div class="mb-8">
+                <form
+                    id="uploadForm"
+                    class="flex flex-col items-center space-y-4"
+                >
+                    <input
+                        type="file"
+                        id="imsccFile"
+                        name="imsccFile"
+                        accept=".imscc"
+                        class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    <button
+                        type="submit"
+                        class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-full hover:bg-blue-700 transition-colors duration-200"
+                    >
+                        Parse File
+                    </button>
+                </form>
+            </div>
+
+            <div
+                id="statusMessage"
+                class="text-center text-lg font-medium mb-4"
+            ></div>
+            <pre
+                id="resultsDisplay"
+                class="bg-gray-800 text-white p-6 rounded-lg overflow-x-auto text-sm hidden"
+            ></pre>
+            <div id="formattedResults" class="hidden"></div>
+        </div>
+
+        <script>
+            const uploadForm = document.getElementById("uploadForm");
+            const imsccFile = document.getElementById("imsccFile");
+            const statusMessage = document.getElementById("statusMessage");
+            const resultsDisplay = document.getElementById("resultsDisplay");
+            const formattedResults =
+                document.getElementById("formattedResults");
+
+            uploadForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+
+                const file = imsccFile.files[0];
+                if (!file) {
+                    statusMessage.textContent = "Please select a file.";
+                    statusMessage.className =
+                        "text-center text-lg font-medium text-red-500 mb-4";
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("imsccFile", file);
+
+                statusMessage.textContent = "Uploading and parsing file...";
+                statusMessage.className =
+                    "text-center text-lg font-medium text-gray-600 mb-4";
+                resultsDisplay.style.display = "none";
+                formattedResults.style.display = "none";
+
+                try {
+                    const response = await fetch("/upload", {
+                        method: "POST",
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Server responded with an error.");
+                    }
+
+                    const data = await response.json();
+
+                    statusMessage.textContent = "Parsing complete!";
+                    statusMessage.className =
+                        "text-center text-lg font-medium text-green-600 mb-4";
+
+                    // Display raw JSON
+                    resultsDisplay.textContent = JSON.stringify(data, null, 2);
+                    resultsDisplay.style.display = "block";
+
+                    // You can also add logic here to display a more user-friendly, formatted view
+                    // For now, we'll just show the raw JSON.
+                    // You can use the `data` object to build a nice HTML view if you like.
+                } catch (error) {
+                    statusMessage.textContent = `Error: ${error.message}`;
+                    statusMessage.className =
+                        "text-center text-lg font-medium text-red-500 mb-4";
+                    resultsDisplay.style.display = "none";
+                }
+            });
+        </script>
+    </body>
+</html>
