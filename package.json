@@ -1,15 +1,17 @@
 {
     "name": "imscc-parser",
     "version": "1.0.0",
-    "description": "",
+    "description": "IMSCC File Parser for Vercel",
     "main": "index.js",
+    "type": "module",
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "dev": "vercel dev",
+        "build": "echo \"No build step required\"",
+        "start": "vercel dev"
     },
     "keywords": [],
     "author": "",
     "license": "ISC",
-    "type": "commonjs",
     "dependencies": {
         "express": "^5.1.0",
         "multer": "^2.0.2",
