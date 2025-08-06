@@ -120,9 +120,8 @@ async function processXmlFile(xmlFilePath) {
                     options: [],
                     correctAnswer: "N/A",
                     score: "N/A",
-                };
+                }; // detect Multiple Choice
 
-                // detect Multiple Choice
                 if (item.presentation?.response_lid?.render_choice) {
                     question.responseType = "Multiple Choice";
                     const choices = Array.isArray(
@@ -148,8 +147,11 @@ async function processXmlFile(xmlFilePath) {
 
                     const correctResponse =
                         item.resprocessing?.respcondition?.find(
-                            (cond) => cond.setvar
+                            (cond) =>
+                                cond.setvar &&
+                                cond.setvar.$?.varname === "SCORE"
                         );
+
                     if (correctResponse) {
                         const correctIdent =
                             correctResponse.conditionvar?.varequal?.["#"] ?? "";
@@ -159,7 +161,8 @@ async function processXmlFile(xmlFilePath) {
                         question.correctAnswer = {
                             id: correctIdent,
                             text: correctChoice?.text ?? "N/A",
-                        };
+                        }; // Extract and assign the score
+                        question.score = correctResponse.setvar?.["#"] ?? "N/A";
                     }
                 }
 
@@ -170,7 +173,6 @@ async function processXmlFile(xmlFilePath) {
         });
     });
 }
-
 // Main API handler
 export default async function handler(req, res) {
     if (req.method !== "POST") {
