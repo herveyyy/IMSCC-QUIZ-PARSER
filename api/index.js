@@ -1,3 +1,4 @@
+// api/index.js (formerly server.js)
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
@@ -8,13 +9,17 @@ const xml2js = require("xml2js");
 const yauzl = require("yauzl");
 
 const app = express();
-const PORT = 3000;
+// PORT is only for local development; Vercel assigns its own port.
+const PORT = process.env.PORT || 3000;
 
-// Setup Multer for temporary file storage
+// Setup Multer for temporary file storage.
+// Vercel's serverless environment has a writable /tmp directory.
 const upload = multer({ dest: os.tmpdir() });
 
-// Serve static files (like the HTML page)
-app.use(express.static("public"));
+// IMPORTANT: When deployed to Vercel, static files are served directly from the 'public' directory.
+// This `app.use(express.static("public"));` line is primarily for local development
+// if you run your server directly and want it to also serve the frontend.
+// For Vercel, the 'public' directory is served automatically by default.
 
 /**
  * Helper function to remove HTML tags from a string.
@@ -86,6 +91,7 @@ async function processXmlFile(xmlFilePath) {
         mergeAttrs: true,
         attrkey: "$",
         charkey: "#",
+        strict: false, // Be lenient with malformed XML/HTML
     });
 
     return new Promise((resolve, reject) => {
@@ -128,7 +134,7 @@ async function processXmlFile(xmlFilePath) {
                         ) ?? "N/A",
                     responseType: "N/A",
                     options: [],
-                    correctAnswer: "N/A",
+                    correctAnswer: { id: "N/A", text: "N/A" }, // Changed to an object to hold id and text
                     score: "N/A",
                 };
 
@@ -137,7 +143,9 @@ async function processXmlFile(xmlFilePath) {
                     item.itemmetadata?.qtimetadata?.qtimetadatafield
                 )
                     ? item.itemmetadata.qtimetadata.qtimetadatafield
-                    : [item.itemmetadata?.qtimetadata?.qtimetadatafield];
+                    : [item.itemmetadata?.qtimetadata?.qtimetadatafield].filter(
+                          Boolean
+                      );
 
                 const weightField = qtimetadatafields.find(
                     (field) => field?.fieldlabel === "cc_weighting"
@@ -159,11 +167,18 @@ async function processXmlFile(xmlFilePath) {
                 }
                 question.score = score;
 
-                if (item.presentation?.response_lid?.render_choice) {
+                const profileField = qtimetadatafields.find(
+                    (f) => f.fieldlabel === "cc_profile"
+                );
+                const questionProfileType = profileField
+                    ? profileField.fieldentry
+                    : "unknown";
+
+                if (questionProfileType === "cc.multiple_choice.v0p1") {
                     question.responseType = "Multiple Choice";
                     const choices = Array.isArray(
-                        item.presentation.response_lid.render_choice
-                            .response_label
+                        item.presentation?.response_lid?.render_choice
+                            ?.response_label
                     )
                         ? item.presentation.response_lid.render_choice
                               .response_label
@@ -200,14 +215,12 @@ async function processXmlFile(xmlFilePath) {
                     } else {
                         question.correctAnswer = { id: "N/A", text: "N/A" };
                     }
-                } else if (item.presentation?.response_str) {
+                } else if (questionProfileType === "cc.fib.v0p1") {
                     question.responseType = "Fill-in-the-Blank";
                     question.correctAnswer =
                         item.resprocessing?.respcondition?.[0]?.conditionvar
                             ?.varequal?.["#"] ?? "N/A";
                 } else {
-                    const profileField =
-                        item.itemmetadata?.qtimetadata?.qtimetadatafield;
                     const isEssay = Array.isArray(profileField)
                         ? profileField.find(
                               (f) =>
@@ -232,8 +245,9 @@ async function processXmlFile(xmlFilePath) {
     });
 }
 
-// Upload endpoint
-app.post("/upload", upload.single("imsccFile"), async (req, res) => {
+// Define the POST /api/upload endpoint
+// This route will now be served by Vercel from the /api path.
+app.post("/api/upload", upload.single("imsccFile"), async (req, res) => {
     if (!req.file) {
         return res.status(400).send("No file uploaded.");
     }
@@ -257,6 +271,7 @@ app.post("/upload", upload.single("imsccFile"), async (req, res) => {
             mergeAttrs: true,
             attrkey: "$",
             charkey: "#",
+            strict: false,
         });
         const manifest = await new Promise((resolve, reject) => {
             parser.parseString(manifestXml, (err, result) => {
@@ -269,18 +284,28 @@ app.post("/upload", upload.single("imsccFile"), async (req, res) => {
             manifest.manifest?.metadata?.["lomm:lom"]?.["lomm:general"]?.[
                 "lomm:title"
             ]?.["lomm:string"]?.["#"] ?? "N/A";
-        const resources = manifest.manifest.resources.resource;
+
+        const resources = Array.isArray(manifest.manifest.resources.resource)
+            ? manifest.manifest.resources.resource
+            : [manifest.manifest.resources.resource].filter(Boolean);
+
         const quizFiles = resources.filter(
             (r) => r.type === "imsqti_xmlv1p2/imscc_xmlv1p3/assessment"
         );
 
         let allQuizData = [];
         for (const resource of quizFiles) {
-            const relativePath = resource.file.href;
-            const xmlFilePath = path.join(tempDirPath, relativePath);
-            const quizData = await processXmlFile(xmlFilePath);
-            if (quizData) {
-                allQuizData.push(quizData);
+            const files = Array.isArray(resource.file)
+                ? resource.file
+                : [resource.file].filter(Boolean);
+            const relativePath = files[0]?.href;
+
+            if (relativePath) {
+                const xmlFilePath = path.join(tempDirPath, relativePath);
+                const quizData = await processXmlFile(xmlFilePath);
+                if (quizData) {
+                    allQuizData.push(quizData);
+                }
             }
         }
 
@@ -289,7 +314,6 @@ app.post("/upload", upload.single("imsccFile"), async (req, res) => {
         console.error("Error processing file:", error);
         res.status(500).send("Error processing the file.");
     } finally {
-        // Clean up temporary files
         if (req.file) {
             await fsPromises
                 .unlink(imsccFilePath)
@@ -303,6 +327,11 @@ app.post("/upload", upload.single("imsccFile"), async (req, res) => {
     }
 });
 
+// This app.listen is only for local development and will be ignored by Vercel.
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+// This line is crucial for Vercel to treat this file as a serverless function.
+// It tells Vercel to export your Express 'app' instance.
+module.exports = app;
